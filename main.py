@@ -39,7 +39,7 @@ def login(postgresql_server, port, user, password):
         return False, t2-t1
     except Exception as err:
         t2 = time()
-        return err
+        return err, t2-t1
 
 def brute_force(thread_index, postgresql_server, port, credentials):
     successful_logins = {}
