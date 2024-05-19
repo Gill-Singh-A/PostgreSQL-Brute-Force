@@ -24,7 +24,7 @@ def get_arguments(*args):
         parser.add_option(arg[0], arg[1], dest=arg[2], help=arg[3])
     return parser.parse_args()[0]
 
-port = 3306
+port = 5432
 lock = Lock()
 
 def login(postgresql_server, port, user, password):
